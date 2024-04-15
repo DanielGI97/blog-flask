@@ -3,13 +3,26 @@ from forms import SignupForm, PostForm, LoginForm
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
 from models import *
 from werkzeug.urls import url_parse
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import create_engine
+
+#DATABASE CREDENTIALS
+db_user = 'root'
+db_pass = 'Tala2&Capo8'
+db_host = '127.0.0.1'
+db_port = 3306
+db_base = 'LocalMiticus'
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '7110c8ae51a4b5af97be6534caef90e4bb9bdcb3380af008f90b23a5d1616bf319bc298105da20fe'
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_base}"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+db = SQLAlchemy(app)
 
 posts = []
 
@@ -43,43 +56,46 @@ def post_form(post_id):
 @app.route("/signup/",methods=["GET","POST"])
 def show_signup_form():
 
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    
     form = SignupForm()
+    error = None
     if form.validate_on_submit():
         name = form.name.data
         email = form.email.data
         password = form.password.data
+        user = User.get_by_email(email)
+        if user is not None:
+            error = f'El email: {email}, ya está siendo utilizado por otro usuario'
+        else:
 
-        user = User(len(users)+1,name,email,password)
-        user.anonymous=False
-        user.authenticated=True
-        users.append(user)
-        print(users)
-        login_user(user, remember=True)
+            user = User(name=name,email=email)
+            user.set_password(password)
+            user.anonymous=False
+            user.authenticated=True
+            user.save()
+            login_user(user, remember=True)
 
-        next_page = request.args.get('next', None)
-        if not next_page or url_parse(next_page).netloc != '':
-            next_page = url_for('index')
-        return redirect(next_page)
+            next_page = request.args.get('next', None)
+            if not next_page or url_parse(next_page).netloc != '':
+                next_page = url_for('index')
+            return redirect(next_page)
     return render_template("signup_form.html",form=form)
 
 @login_manager.user_loader
 def load_user(user_id):
-
-    for user in users:
-        if user.id == int(user_id):
-            return user
-    return None
+    return User.get_by_id(user_id)
 
 @app.route("/login/",methods=["GET","POST"])
 def login():
 
     #if current_user.is_authenticated:
     #    return redirect(url_for('index'))
-    print(users)
     form = LoginForm()
     if form.validate_on_submit():
 
-        user = get_user(form.email.data)
+        user = User.get_by_email(form.email.data)
         print(user)
         if user is not None and user.check_password(form.password.data):
 
@@ -100,4 +116,3 @@ def logout():
     logout_user()
     print("EL USUARIO A HECHO LOGOUT.")
     return redirect(url_for('index'))
-
